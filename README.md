@@ -68,14 +68,22 @@ firebase deploy --project <project-id>
 
 > Se non hai impostato il progetto localmente, esegui `firebase use --add` oppure aggiungi `--project <project-id>` ai comandi di deploy.
 
-## CI/CD (opzionale)
+## CI/CD (opzionale ma consigliato)
 
-Cartella `.github/workflows` contiene un workflow di preview Hosting su Pull Request. Per abilitarlo imposta il secret del Service Account nella repo GitHub:
+Sono inclusi due workflow in `.github/workflows/`:
 
-- Crea una chiave JSON di Service Account con ruolo "Firebase Hosting Admin" / "Editor" sul progetto.
-- In GitHub, Settings > Secrets and variables > Actions > New repository secret
+- `firebase-hosting-pull-request.yml`: preview su PR
+- `firebase-hosting-deploy.yml`: deploy in produzione su push in `main` (o manuale via "Run workflow")
+
+Per abilitarli:
+
+1) Crea una chiave JSON di Service Account con ruolo minimo "Firebase Hosting Admin" nel progetto `duosync-xxx`.
+2) In GitHub: Settings → Secrets and variables → Actions → New repository secret
 	- Nome: `FIREBASE_SERVICE_ACCOUNT_DUOSYNC_XXX`
-	- Valore: contenuto del JSON
+	- Valore: incolla il JSON del service account
+3) (Opzionale) Usa un Environment `production` con approvazione manuale e limita l’accesso ai secrets.
+
+> Il deploy su Actions è veloce da configurare (≈5 minuti) e riduce errori manuali: al push su `main` crea la build statica e rilascia su Firebase Hosting.
 
 ## Sicurezza e privacy su repo pubblica
 
@@ -86,6 +94,9 @@ Cartella `.github/workflows` contiene un workflow di preview Hosting su Pull Req
 - Dati personali: evita di committare dati reali in `public/` o `docs/`. Popola il DB direttamente in Firebase.
 - Token/Service Account: non committare JSON di service account. Mettilo nei GitHub Secrets per i workflow.
 - Repo pubblica vs privata: se preferisci la massima riservatezza, rendi la repo privata. Pubblica è ok se non contiene segreti o PII.
+- App Check (opzionale ma utile): abilitalo in Firebase per Firestore/Hosting per mitigare abusi da client non verificati.
+- 2FA: abilita l’autenticazione a due fattori sul tuo account GitHub e su Google.
+- Branch protection: proteggi `main` con review obbligatorie e status checks.
 
 ## Strumenti
 
