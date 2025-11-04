@@ -1,4 +1,14 @@
-# DuoSync
+<div align="center">
+	<h1>💑 DuoSync</h1>
+	<p><em>Calendario e wishlist condivisi, con Next.js + Firebase</em></p>
+
+	<a href="https://github.com/Focaccina-Ripiena37/DuoSync/actions/workflows/firebase-hosting-deploy.yml">
+		<img alt="Deploy status" src="https://github.com/Focaccina-Ripiena37/DuoSync/actions/workflows/firebase-hosting-deploy.yml/badge.svg" />
+	</a>
+	<a href="https://github.com/Focaccina-Ripiena37/DuoSync/actions/workflows/firebase-hosting-pull-request.yml">
+		<img alt="PR Preview" src="https://github.com/Focaccina-Ripiena37/DuoSync/actions/workflows/firebase-hosting-pull-request.yml/badge.svg" />
+	</a>
+</div>
 
 App Next.js (App Router) con autenticazione Firebase, calendario e wishlist condivisi. Deploy su Firebase Hosting con esportazione statica.
 
@@ -68,12 +78,12 @@ firebase deploy --project <project-id>
 
 > Se non hai impostato il progetto localmente, esegui `firebase use --add` oppure aggiungi `--project <project-id>` ai comandi di deploy.
 
-## CI/CD (opzionale ma consigliato)
+## CI/CD (consigliato)
 
 Sono inclusi due workflow in `.github/workflows/`:
 
 - `firebase-hosting-pull-request.yml`: preview su PR
-- `firebase-hosting-deploy.yml`: deploy in produzione su push in `main` (o manuale via "Run workflow")
+- `firebase-hosting-deploy.yml`: build su push in `main` e deploy manuale su produzione via "Run workflow" con conferma
 
 Per abilitarli:
 
@@ -83,7 +93,7 @@ Per abilitarli:
 	- Valore: incolla il JSON del service account
 3) (Consigliato) Environment `production` con approvazione manuale e accesso ai secrets limitato.
 
-> Il deploy su Actions è veloce da configurare (≈5 minuti) e riduce errori manuali: al push su `main` crea la build statica e rilascia su Firebase Hosting.
+> Come funziona: al push su `main` viene eseguita la build. Per rilasciare in produzione, apri la tab **Actions** → workflow "Deploy to Firebase Hosting" → **Run workflow** → scegli `confirm: yes`.
 
 ## Sicurezza e privacy su repo pubblica
 
