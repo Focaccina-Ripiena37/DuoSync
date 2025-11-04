@@ -1,0 +1,31 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Restrict access to exactly two email accounts.
+    // TODO: Replace the placeholders with your two real email addresses.
+    function isAllowedEmail() {
+      return request.auth.token.email in [
+        'user1@example.com',
+        'user2@example.com'
+      ];
+    }
+
+    // Rules for 'calendar' collection
+    match /calendar/{eventId} {
+      allow read, write: if isAuthenticated() && isAllowedEmail();
+    }
+
+    // Rules for 'wishlist' collection
+    match /wishlist/{itemId} {
+      allow read, write: if isAuthenticated() && isAllowedEmail();
+    }
+  }
+}
