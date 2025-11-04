@@ -81,7 +81,7 @@ Per abilitarli:
 2) In GitHub: Settings → Secrets and variables → Actions → New repository secret
 	- Nome: `FIREBASE_SERVICE_ACCOUNT_DUOSYNC_XXX`
 	- Valore: incolla il JSON del service account
-3) (Opzionale) Usa un Environment `production` con approvazione manuale e limita l’accesso ai secrets.
+3) (Consigliato) Environment `production` con approvazione manuale e accesso ai secrets limitato.
 
 > Il deploy su Actions è veloce da configurare (≈5 minuti) e riduce errori manuali: al push su `main` crea la build statica e rilascia su Firebase Hosting.
 
@@ -97,6 +97,12 @@ Per abilitarli:
 - App Check (opzionale ma utile): abilitalo in Firebase per Firestore/Hosting per mitigare abusi da client non verificati.
 - 2FA: abilita l’autenticazione a due fattori sul tuo account GitHub e su Google.
 - Branch protection: proteggi `main` con review obbligatorie e status checks.
+
+## App Check (Web) con reCAPTCHA v3
+
+- Imposta nel file `.env.local` la variabile `NEXT_PUBLIC_FIREBASE_RECAPTCHA_V3_SITE_KEY` (site key pubblica reCAPTCHA v3).
+- In Firebase Console abilita App Check per la tua app Web e seleziona reCAPTCHA v3.
+- L’SDK è inizializzato in `src/lib/firebase.ts` e aggiorna automaticamente i token (`isTokenAutoRefreshEnabled: true`).
 
 ## Strumenti
 
