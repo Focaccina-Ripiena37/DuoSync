@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { AuthProvider } from "@/components/auth/AuthProvider";
 import { Toaster } from "@/components/ui/toaster";
 import "./globals.css";
+import Providers from "@/components/theme/Providers";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export const metadata: Metadata = {
   title: "DuoSync",
@@ -34,8 +35,14 @@ export default function RootLayout({
         />
       </head>
       <body className="font-body antialiased bg-background">
-        <AuthProvider>{children}</AuthProvider>
-        <Toaster />
+        <Providers>
+          {children}
+          <Toaster />
+          {/* Mobile floating theme toggle (so it's visible also on login and non-app pages) */}
+          <div className="fixed bottom-4 right-4 z-50 md:hidden">
+            <ThemeToggle />
+          </div>
+        </Providers>
       </body>
     </html>
   );

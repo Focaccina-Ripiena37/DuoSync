@@ -1,6 +1,6 @@
 <div align="center">
 	<h1>💑 DuoSync</h1>
-	<p><em>Calendario e wishlist condivisi, con Next.js + Firebase</em></p>
+	<p><em>Calendario e wishlist condivisi, con Next.js + Firebase</em> — <strong>Dark/Light mode</strong></p>
 
 	<a href="https://github.com/Focaccina-Ripiena37/DuoSync/actions/workflows/firebase-hosting-deploy.yml">
 		<img alt="Deploy status" src="https://github.com/Focaccina-Ripiena37/DuoSync/actions/workflows/firebase-hosting-deploy.yml/badge.svg" />
@@ -24,6 +24,7 @@ App Next.js (App Router) con autenticazione Firebase, calendario e wishlist cond
 	- Mostra prima gli elementi del partner
 	- Campo link opzionale con bottone "Apri link"
 - Navigazione ottimizzata per mobile (bottom bar) e desktop (header)
+- Tema chiaro/scuro con toggle nell’header (next-themes)
 
 ## Requisiti
 

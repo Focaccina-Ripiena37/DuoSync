@@ -16,6 +16,7 @@ import {
   SheetClose,
 } from "@/components/ui/sheet";
 import { useState } from "react";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default function Header() {
   const { user } = useAuth();
@@ -83,6 +84,7 @@ export default function Header() {
 
         <div className="hidden items-center gap-4 md:flex">
           <span className="text-sm text-muted-foreground">Ciao, {userName}!</span>
+          <ThemeToggle />
           <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Logout">
             <LogOut className="h-5 w-5" />
           </Button>
@@ -111,6 +113,9 @@ export default function Header() {
                   ))}
                 </nav>
                 <div className="mt-auto p-4 border-t">
+                  <div className="mb-2 flex justify-center">
+                    <ThemeToggle />
+                  </div>
                   <Button
                     variant="ghost"
                     className="w-full justify-start gap-2"

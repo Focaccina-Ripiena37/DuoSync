@@ -14,15 +14,19 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
 };
 
-// Initialize Firebase only once on the client
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+// Initialize Firebase only on the client to avoid CI/build failures when env vars are not present
+let app = getApps().length ? getApp() : undefined;
+if (typeof window !== "undefined" && !app) {
+  app = initializeApp(firebaseConfig);
+}
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+// Export auth/db only when app exists (client). On server/build they are undefined but never used.
+export const auth = app ? getAuth(app) : (undefined as any);
+export const db = app ? getFirestore(app) : (undefined as any);
 
 // Initialize App Check (client-only). Uses reCAPTCHA v3 site key.
 // Ensure NEXT_PUBLIC_FIREBASE_RECAPTCHA_V3_SITE_KEY is set in .env.local
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && app) {
   try {
     initializeAppCheck(app, {
       provider: new ReCaptchaV3Provider(
