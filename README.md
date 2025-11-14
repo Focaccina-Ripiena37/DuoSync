@@ -1,13 +1,16 @@
 <div align="center">
-	<h1>💑 DuoSync</h1>
-	<p><em>Calendario e wishlist condivisi, con Next.js + Firebase</em> — <strong>Dark/Light mode</strong></p>
 
-	<a href="https://github.com/Focaccina-Ripiena37/DuoSync/actions/workflows/firebase-hosting-deploy.yml">
-		<img alt="Deploy status" src="https://github.com/Focaccina-Ripiena37/DuoSync/actions/workflows/firebase-hosting-deploy.yml/badge.svg" />
-	</a>
-	<a href="https://github.com/Focaccina-Ripiena37/DuoSync/actions/workflows/firebase-hosting-pull-request.yml">
-		<img alt="PR Preview" src="https://github.com/Focaccina-Ripiena37/DuoSync/actions/workflows/firebase-hosting-pull-request.yml/badge.svg" />
-	</a>
+<h1>💑 DuoSync</h1>
+<p><em>Calendario e wishlist condivisi, con Next.js + Firebase</em> — <strong>Dark/Light mode</strong></p>
+
+<a href="https://github.com/Focaccina-Ripiena37/DuoSync/actions/workflows/firebase-hosting-deploy.yml">
+  <img src="https://github.com/Focaccina-Ripiena37/DuoSync/actions/workflows/firebase-hosting-deploy.yml/badge.svg" alt="Deploy status" />
+</a>
+
+<a href="https://github.com/Focaccina-Ripiena37/DuoSync/actions/workflows/firebase-hosting-pull-request.yml">
+  <img src="https://github.com/Focaccina-Ripiena37/DuoSync/actions/workflows/firebase-hosting-pull-request.yml/badge.svg" alt="PR Preview" />
+</a>
+
 </div>
 
 App Next.js (App Router) con autenticazione Firebase, calendario e wishlist condivisi. Deploy su Firebase Hosting con esportazione statica.
