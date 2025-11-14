@@ -16,6 +16,7 @@
     "deploy:prod": "npm run build:static && firebase deploy --project duosync-xxx"
   },
   "dependencies": {
+    "@google-cloud/recaptcha-enterprise": "^5.13.0",
     "@genkit-ai/google-genai": "^1.20.0",
     "@genkit-ai/next": "^1.20.0",
     "@hookform/resolvers": "^4.1.3",

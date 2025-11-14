@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Script from "next/script";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -40,6 +41,9 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
+  const siteKey =
+    process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY ||
+    "RECAPTCHA_SITE_KEY_PLACEHOLDER"; // fallback to provided key
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -52,15 +56,60 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginFormValues) => {
     setIsLoading(true);
     try {
+      const token: string = await new Promise((resolve, reject) => {
+        const gre: any = (window as any)?.grecaptcha;
+        if (!gre) {
+          reject(new Error("reCAPTCHA non caricato"));
+          return;
+        }
+        gre.ready(async () => {
+          try {
+            const t = await gre.execute(siteKey, { action: "LOGIN" });
+            resolve(t);
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+
+      const res = await fetch("/api/recaptcha/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, action: "LOGIN" }),
+      });
+
+      const payload = await res.json();
+      if (!res.ok || !payload?.success) {
+        throw new Error(
+          payload?.message || "Verifica reCAPTCHA fallita, riprova."
+        );
+      }
+      if (typeof payload.score === "number" && payload.score < 0.5) {
+        throw new Error("Punteggio reCAPTCHA troppo basso");
+      }
+      if (payload.action && payload.action !== "LOGIN") {
+        throw new Error("Azione reCAPTCHA non valida");
+      }
+
       await signInWithEmailAndPassword(auth, data.email, data.password);
-      // Fallback: in caso di ritardi nel listener di Auth, forziamo il redirect
       router.push("/calendar");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed:", error);
+      let errorMessage = "Impossibile completare l'accesso. Controlla i dati e riprova.";
+      
+      // Handle Firebase auth errors
+      if (error?.code === "auth/invalid-credential" || error?.code === "auth/wrong-password" || error?.code === "auth/user-not-found") {
+        errorMessage = "Email o password non validi. Riprova.";
+      } else if (error?.code === "auth/too-many-requests") {
+        errorMessage = "Troppi tentativi falliti. Riprova più tardi.";
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         variant: "destructive",
-        title: "Errore di accesso",
-        description: "Email o password non corrette. Riprova.",
+        title: "Errore",
+        description: errorMessage,
       });
       setIsLoading(false);
     }
@@ -68,6 +117,10 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <Script
+        src={`https://www.google.com/recaptcha/api.js?render=${siteKey}`}
+        strategy="afterInteractive"
+      />
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4">
