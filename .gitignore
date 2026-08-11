@@ -44,6 +44,7 @@ next-env.d.ts
 firebase-debug.log
 firestore-debug.log
 .firebase/
+.firebaserc
 
 # local tooling configs (personal, not project code)
 opencode.json
