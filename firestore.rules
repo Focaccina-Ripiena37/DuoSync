@@ -1,16 +1,18 @@
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper functions
+
     function isAuthenticated() {
       return request.auth != null;
     }
 
     // Restrict access to exactly two email accounts.
-    // TODO: Replace the placeholders with your two real email addresses.
+    //
+    // SECURITY: real addresses are NEVER committed. Placeholders below are
+    // replaced only at deploy time by `npm run deploy:rules`, which reads
+    // DUOSYNC_EMAIL_1 / DUOSYNC_EMAIL_2 from .env.local and then restores
+    // this file to its placeholder state.
     function isAllowedEmail() {
       return request.auth.token.email in [
         'user1@example.com',
@@ -18,14 +20,62 @@ service cloud.firestore {
       ];
     }
 
-    // Rules for 'calendar' collection
-    match /calendar/{eventId} {
-      allow read, write: if isAuthenticated() && isAllowedEmail();
+    function isValidEvent(data, original) {
+      return data is map
+        && data.size() < 5000
+        && data.title is string
+        && data.title.size() > 0
+        && data.date is timestamp
+        && data.allDay is bool
+        && data.createdBy == original.createdBy
+        && (!('description' in data) || data.description is string)
+        && (!('color' in data) || data.color is string)
+        && (!('startTime' in data) || data.startTime is string)
+        && (!('endTime' in data) || data.endTime is string);
     }
 
-    // Rules for 'wishlist' collection
+    function isValidWishlistItem(data, original) {
+      return data is map
+        && data.size() < 5000
+        && data.name is string
+        && data.name.size() > 0
+        && data.status in ['to-buy', 'bought']
+        && data.ownerUid == original.ownerUid
+        && data.ownerEmail == original.ownerEmail
+        && data.createdAt == original.createdAt
+        && (!('description' in data) || data.description is string)
+        && (!('url' in data) || data.url is string)
+        && (!('reservedBy' in data) || (data.reservedBy is string && data.reservedBy.size() > 0))
+        && (!('reservedByName' in data) || data.reservedByName is string)
+        && (!('reservedByEmail' in data) || data.reservedByEmail is string);
+    }
+
+    // Calendar: shared between the two users. Both can create/update/delete;
+    // createdBy is assigned to the creator by the rules on create and is
+    // immutable afterwards so the item always shows who added it.
+    match /calendar/{eventId} {
+      allow read: if isAuthenticated() && isAllowedEmail();
+      allow create: if isAuthenticated() && isAllowedEmail()
+        && isValidEvent(request.resource.data, request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isAuthenticated() && isAllowedEmail()
+        && isValidEvent(request.resource.data, resource.data)
+        && request.resource.data.createdBy == resource.data.createdBy;
+      allow delete: if isAuthenticated() && isAllowedEmail();
+    }
+
+    // Wishlist: ownerUid/ownerEmail are assigned on create and immutable;
+    // the partner may toggle status and reserve items.
     match /wishlist/{itemId} {
-      allow read, write: if isAuthenticated() && isAllowedEmail();
+      allow read: if isAuthenticated() && isAllowedEmail();
+      allow create: if isAuthenticated() && isAllowedEmail()
+        && isValidWishlistItem(request.resource.data, request.resource.data)
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerEmail == request.auth.token.email;
+      allow update: if isAuthenticated() && isAllowedEmail()
+        && isValidWishlistItem(request.resource.data, resource.data)
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isAuthenticated() && isAllowedEmail();
     }
   }
 }

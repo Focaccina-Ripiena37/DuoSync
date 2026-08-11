@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import {
   collection,
   onSnapshot,
@@ -10,17 +11,11 @@ import {
   doc,
   query,
   orderBy,
+  Timestamp,
+  deleteField,
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -40,41 +35,26 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, Edit, Trash2, Loader2, Gift, X } from "lucide-react";
+import { Plus, Loader2, Gift, Heart } from "lucide-react";
 import type { WishlistItem } from "@/types";
 import { useToast } from "@/hooks/use-toast";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { cn } from "@/lib/utils";
+import { ToastAction } from "@/components/ui/toast";
+import { useAuth } from "@/hooks/useAuth";
+import { WishlistCard } from "@/components/WishlistCard";
+import { displayName, groupByStatus, splitByOwner } from "@/lib/wishlist-utils";
 
 const itemSchema = z.object({
   name: z.string().min(1, "Il nome è obbligatorio."),
   description: z.string().optional(),
-  url: z.string().url({ message: "Inserisci un link valido." }).optional().or(z.literal(""))
+  url: z.string().url({ message: "Inserisci un link valido." }).optional().or(z.literal("")),
 });
 
 type ItemFormValues = z.infer<typeof itemSchema>;
 
-function ItemForm({
-  item,
-  onClose,
-}: {
-  item?: WishlistItem;
-  onClose: () => void;
-}) {
+function ItemForm({ item, onClose }: { item?: WishlistItem; onClose: () => void }) {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const form = useForm<ItemFormValues>({
@@ -93,8 +73,13 @@ function ItemForm({
         await updateDoc(doc(db, "wishlist", item.id), data);
         toast({ title: "Oggetto aggiornato!" });
       } else {
-        const itemData = { ...data, status: "to-buy" as const, ownerUid: auth.currentUser?.uid || "" };
-        await addDoc(collection(db, "wishlist"), itemData);
+        await addDoc(collection(db, "wishlist"), {
+          ...data,
+          status: "to-buy",
+          ownerUid: auth.currentUser?.uid || "",
+          ownerEmail: auth.currentUser?.email || "",
+          createdAt: Timestamp.now(),
+        });
         toast({ title: "Oggetto aggiunto!" });
       }
       onClose();
@@ -120,7 +105,7 @@ function ItemForm({
             <FormItem>
               <FormLabel>Nome oggetto</FormLabel>
               <FormControl>
-                <Input placeholder="Es. Un nuovo libro" {...field} />
+                <Input placeholder="Es. Un nuovo libro" autoFocus {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -133,10 +118,7 @@ function ItemForm({
             <FormItem>
               <FormLabel>Descrizione</FormLabel>
               <FormControl>
-                <Textarea
-                  placeholder="Dettagli aggiuntivi (opzionale)"
-                  {...field}
-                />
+                <Textarea placeholder="Dettagli aggiuntivi (opzionale)" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -149,7 +131,7 @@ function ItemForm({
             <FormItem>
               <FormLabel>Link (opzionale)</FormLabel>
               <FormControl>
-                <Input placeholder="https://…" {...field} />
+                <Input type="url" placeholder="https://…" inputMode="url" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -171,28 +153,73 @@ function ItemForm({
   );
 }
 
+function SectionTitle({ children }: { children: ReactNode }) {
+  return <h2 className="mb-4 text-xl font-semibold">{children}</h2>;
+}
+
+function SubSectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <h3 className="mb-3 flex items-center gap-2 text-lg font-medium">
+      {children}
+    </h3>
+  );
+}
+
+function ItemGrid({
+  items,
+  isMine,
+  myUid,
+  onToggleStatus,
+  onEdit,
+  onDelete,
+  onReserve,
+  onUnreserve,
+}: {
+  items: WishlistItem[];
+  isMine: boolean;
+  myUid: string;
+  onToggleStatus: (item: WishlistItem) => void;
+  onEdit: (item: WishlistItem) => void;
+  onDelete: (id: string) => void;
+  onReserve: (item: WishlistItem) => void;
+  onUnreserve: (item: WishlistItem) => void;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => (
+        <WishlistCard
+          key={item.id}
+          item={item}
+          isMine={isMine}
+          myUid={myUid}
+          onToggleStatus={onToggleStatus}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onReserve={onReserve}
+          onUnreserve={onUnreserve}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function WishlistPage() {
   const [items, setItems] = useState<WishlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<WishlistItem | undefined>(
-    undefined
-  );
+  const [editingItem, setEditingItem] = useState<WishlistItem | undefined>(undefined);
   const { toast } = useToast();
+  const { user, loading: isAuthLoading } = useAuth();
 
   useEffect(() => {
-    const q = query(collection(db, "wishlist"), orderBy("name"));
+    if (isAuthLoading || !user) return;
+    const q = query(collection(db, "wishlist"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const itemsData = snapshot.docs.map(
-          (doc) =>
-            ({
-              id: doc.id,
-              ...doc.data(),
-            } as WishlistItem)
+        setItems(
+          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as WishlistItem)
         );
-        setItems(itemsData);
         setLoading(false);
       },
       (error) => {
@@ -206,11 +233,9 @@ export default function WishlistPage() {
       }
     );
     return () => unsubscribe();
-  }, [toast]);
+  }, [toast, isAuthLoading, user]);
 
-  const me = auth.currentUser?.uid || "";
-  const theirItems = useMemo(() => items.filter(i => i.ownerUid && i.ownerUid !== me), [items, me]);
-  const myItems = useMemo(() => items.filter(i => (i.ownerUid || "") === me), [items, me]);
+  const me = user?.uid || "";
 
   const handleEdit = (item: WishlistItem) => {
     setEditingItem(item);
@@ -236,41 +261,96 @@ export default function WishlistPage() {
     }
   };
 
-  const handleToggleStatus = async (item: WishlistItem) => {
+  const handleToggleStatus = (item: WishlistItem) => {
     const newStatus = item.status === "bought" ? "to-buy" : "bought";
-    try {
-      await updateDoc(doc(db, "wishlist", item.id), { status: newStatus });
-    } catch (error) {
-      console.error("Error updating status:", error);
+    const previous = item.status;
+    setItems((prev) =>
+      prev.map((i) => (i.id === item.id ? { ...i, status: newStatus } : i))
+    );
+    toast({
+      title: newStatus === "bought" ? "Comprato!" : "Segnato come da comprare",
+      action: (
+        <ToastAction
+          altText="Annulla modifica stato"
+          onClick={() => {
+            setItems((prev) =>
+              prev.map((i) => (i.id === item.id ? { ...i, status: previous } : i))
+            );
+            void updateDoc(doc(db, "wishlist", item.id), { status: previous });
+          }}
+        >
+          Annulla
+        </ToastAction>
+      ),
+    });
+    updateDoc(doc(db, "wishlist", item.id), { status: newStatus }).catch(() => {
+      setItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, status: previous } : i))
+      );
       toast({
         variant: "destructive",
         title: "Oh no! Qualcosa è andato storto.",
         description: "Impossibile aggiornare lo stato.",
       });
-    }
+    });
   };
 
-  if (loading) {
+  const handleReserve = (item: WishlistItem) => {
+    const who = displayName(user?.email || "");
+    updateDoc(doc(db, "wishlist", item.id), {
+      reservedBy: user?.uid || "",
+      reservedByName: who,
+      reservedByEmail: user?.email || "",
+    })
+      .then(() => toast({ title: "Lo prendi tu!" }))
+      .catch((error) => {
+        console.error("Error reserving item:", error);
+        toast({
+          variant: "destructive",
+          title: "Oh no! Qualcosa è andato storto.",
+          description: "Impossibile riservare l'oggetto.",
+        });
+      });
+  };
+
+  const handleUnreserve = (item: WishlistItem) => {
+    updateDoc(doc(db, "wishlist", item.id), {
+      reservedBy: deleteField(),
+      reservedByName: deleteField(),
+      reservedByEmail: deleteField(),
+    })
+      .then(() => toast({ title: "Riserva rimossa." }))
+      .catch((error) => {
+        console.error("Error unreserving item:", error);
+        toast({
+          variant: "destructive",
+          title: "Oh no! Qualcosa è andato storto.",
+          description: "Impossibile rimuovere la riserva.",
+        });
+      });
+  };
+
+  if (loading || isAuthLoading || !user) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="h-44 animate-pulse rounded-lg bg-muted/60" />
+        ))}
       </div>
     );
   }
 
-  const groupByStatus = (arr: WishlistItem[]) => ({
-    toBuy: arr.filter(x => x.status === 'to-buy'),
-    bought: arr.filter(x => x.status === 'bought'),
-  });
-  const theirs = groupByStatus(theirItems);
-  const mine = groupByStatus(myItems);
-
+  const { theirs, mine } = splitByOwner(items, me);
+  const theirReserved = theirs.filter((i) => i.reservedBy);
+  const theirToBuy = theirs.filter((i) => !i.reservedBy);
+  const theirGroups = groupByStatus(theirToBuy);
+  const mineGroup = groupByStatus(mine);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-headline tracking-tight">
+          <h1 className="font-headline text-2xl font-bold tracking-tight">
             Wishlist Condivisa
           </h1>
           <p className="text-muted-foreground">
@@ -300,8 +380,8 @@ export default function WishlistPage() {
         </Dialog>
       </div>
 
-    {items.length === 0 ? (
-        <div className="text-center py-16 border-2 border-dashed rounded-lg">
+      {items.length === 0 ? (
+        <div className="border-2 border-dashed rounded-lg py-16 text-center">
           <Gift className="mx-auto h-12 w-12 text-muted-foreground" />
           <h3 className="mt-4 text-lg font-medium">La wishlist è vuota</h3>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -309,172 +389,95 @@ export default function WishlistPage() {
           </p>
         </div>
       ) : (
-    <div className="space-y-12">
-      {/* Wishlist dell'altro utente */}
-      {(theirs.toBuy.length > 0 || theirs.bought.length > 0) && (
-        <div>
-        <h2 className="text-xl font-semibold mb-4">Wishlist di chi ami</h2>
-        {theirs.toBuy.length > 0 && <div className="mb-6">
-          <h3 className="text-lg font-medium mb-3">Da comprare</h3>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {theirs.toBuy.map((item) => (
-                            <Card key={item.id} className="flex flex-col">
-                                <CardHeader>
-                                    <CardTitle className="flex items-start justify-between">
-                    <span className={cn(item.status === "bought" && "line-through text-muted-foreground")}>{item.name}</span>
-                                      <div className="flex items-center space-x-2 pt-1">
-                                          <Checkbox
-                                              id={`status-${item.id}`}
-                                              checked={item.status === 'bought'}
-                                              onCheckedChange={() => handleToggleStatus(item)}
-                                              aria-label="Mark as bought"
-                                          />
-                                      </div>
-                                    </CardTitle>
-                                </CardHeader>
-                <CardContent className="flex-grow space-y-2">
-                  {item.description && <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.description}</p>}
-                  {item.url && <Button asChild size="sm" variant="outline"><a href={item.url} target="_blank" rel="noopener noreferrer">Apri link</a></Button>}
-                </CardContent>
-                                <CardFooter className="flex justify-end gap-2 mt-auto">
-                                    <Button variant="ghost" size="icon" onClick={() => handleEdit(item)}><Edit className="h-4 w-4" /></Button>
-                                    <AlertDialog>
-                                        <AlertDialogTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
-                                        </AlertDialogTrigger>
-                                        <AlertDialogContent>
-                                            <AlertDialogHeader><AlertDialogTitle>Sei sicuro?</AlertDialogTitle><AlertDialogDescription>Questa azione non può essere annullata. L'oggetto sarà cancellato permanentemente.</AlertDialogDescription></AlertDialogHeader>
-                                            <AlertDialogFooter><AlertDialogCancel>Annulla</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(item.id)}>Sì, cancella</AlertDialogAction></AlertDialogFooter>
-                                        </AlertDialogContent>
-                                    </AlertDialog>
-                                </CardFooter>
-                            </Card>
-                        ))}
-          </div>
-        </div>}
-        {theirs.bought.length > 0 && <div>
-          <h3 className="text-lg font-medium mb-3">Comprati</h3>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {theirs.bought.map((item) => (
-                            <Card key={item.id} className="flex flex-col bg-accent/30">
-                                <CardHeader>
-                                    <CardTitle className="flex items-start justify-between">
-                                      <span className={cn("line-through text-muted-foreground")}>{item.name}</span>
-                                      <div className="flex items-center space-x-2 pt-1">
-                                          <Checkbox
-                                              id={`status-${item.id}`}
-                                              checked={item.status === 'bought'}
-                                              onCheckedChange={() => handleToggleStatus(item)}
-                                              aria-label="Mark as to-buy"
-                                          />
-                                      </div>
-                                    </CardTitle>
-                                </CardHeader>
-                <CardContent className="flex-grow space-y-2">
-                  {item.description && <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.description}</p>}
-                  {item.url && <Button asChild size="sm" variant="outline"><a href={item.url} target="_blank" rel="noopener noreferrer">Apri link</a></Button>}
-                </CardContent>
-                                <CardFooter className="flex justify-end gap-2 mt-auto">
-                                    <Button variant="ghost" size="icon" onClick={() => handleEdit(item)}><Edit className="h-4 w-4" /></Button>
-                                    <AlertDialog>
-                                        <AlertDialogTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
-                                        </AlertDialogTrigger>
-                                        <AlertDialogContent>
-                                            <AlertDialogHeader><AlertDialogTitle>Sei sicuro?</AlertDialogTitle><AlertDialogDescription>Questa azione non può essere annullata. L'oggetto sarà cancellato permanentemente.</AlertDialogDescription></AlertDialogHeader>
-                                            <AlertDialogFooter><AlertDialogCancel>Annulla</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(item.id)}>Sì, cancella</AlertDialogAction></AlertDialogFooter>
-                                        </AlertDialogContent>
-                                    </AlertDialog>
-                                </CardFooter>
-                            </Card>
-                        ))}
-          </div>
-        </div>}
-        </div>
-      )}
+        <div className="space-y-12">
+          {(theirs.length > 0) && (
+            <div>
+              <SectionTitle>Wishlist di chi ami</SectionTitle>
+              {theirReserved.length > 0 && (
+                <div className="mb-6">
+                  <SubSectionLabel>
+                    <Heart className="h-5 w-5 text-primary" /> Riservati
+                  </SubSectionLabel>
+                  <ItemGrid
+                    items={theirReserved}
+                    isMine={false}
+                    myUid={me}
+                    onToggleStatus={handleToggleStatus}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onReserve={handleReserve}
+                    onUnreserve={handleUnreserve}
+                  />
+                </div>
+              )}
+              {theirGroups.toBuy.length > 0 && (
+                <div className="mb-6">
+                  <SubSectionLabel>Da comprare</SubSectionLabel>
+                  <ItemGrid
+                    items={theirGroups.toBuy}
+                    isMine={false}
+                    myUid={me}
+                    onToggleStatus={handleToggleStatus}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onReserve={handleReserve}
+                    onUnreserve={handleUnreserve}
+                  />
+                </div>
+              )}
+              {theirGroups.bought.length > 0 && (
+                <div>
+                  <SubSectionLabel>Comprati</SubSectionLabel>
+                  <ItemGrid
+                    items={theirGroups.bought}
+                    isMine={false}
+                    myUid={me}
+                    onToggleStatus={handleToggleStatus}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onReserve={handleReserve}
+                    onUnreserve={handleUnreserve}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
-      {/* La mia wishlist */}
-      {(mine.toBuy.length > 0 || mine.bought.length > 0) && (
-        <div>
-        <h2 className="text-xl font-semibold mb-4">La mia wishlist</h2>
-        {mine.toBuy.length > 0 && <div className="mb-6">
-          <h3 className="text-lg font-medium mb-3">Da comprare</h3>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {mine.toBuy.map((item) => (
-              <Card key={item.id} className="flex flex-col">
-                <CardHeader>
-                  <CardTitle className="flex items-start justify-between">
-                    <span className={cn(item.status === "bought" && "line-through text-muted-foreground")}>{item.name}</span>
-                    <div className="flex items-center space-x-2 pt-1">
-                      <Checkbox
-                        id={`status-${item.id}`}
-                        checked={item.status === 'bought'}
-                        onCheckedChange={() => handleToggleStatus(item)}
-                        aria-label="Mark as bought"
-                      />
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex-grow space-y-2">
-                  {item.description && <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.description}</p>}
-                  {item.url && <Button asChild size="sm" variant="outline"><a href={item.url} target="_blank" rel="noopener noreferrer">Apri link</a></Button>}
-                </CardContent>
-                <CardFooter className="flex justify-end gap-2 mt-auto">
-                  <Button variant="ghost" size="icon" onClick={() => handleEdit(item)}><Edit className="h-4 w-4" /></Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader><AlertDialogTitle>Sei sicuro?</AlertDialogTitle><AlertDialogDescription>Questa azione non può essere annullata. L'oggetto sarà cancellato permanentemente.</AlertDialogDescription></AlertDialogHeader>
-                      <AlertDialogFooter><AlertDialogCancel>Annulla</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(item.id)}>Sì, cancella</AlertDialogAction></AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
-        </div>}
-        {mine.bought.length > 0 && <div>
-          <h3 className="text-lg font-medium mb-3">Comprati</h3>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {mine.bought.map((item) => (
-              <Card key={item.id} className="flex flex-col bg-accent/30">
-                <CardHeader>
-                  <CardTitle className="flex items-start justify-between">
-                    <span className={cn("line-through text-muted-foreground")}>{item.name}</span>
-                    <div className="flex items-center space-x-2 pt-1">
-                      <Checkbox
-                        id={`status-${item.id}`}
-                        checked={item.status === 'bought'}
-                        onCheckedChange={() => handleToggleStatus(item)}
-                        aria-label="Mark as to-buy"
-                      />
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex-grow space-y-2">
-                  {item.description && <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.description}</p>}
-                  {item.url && <Button asChild size="sm" variant="outline"><a href={item.url} target="_blank" rel="noopener noreferrer">Apri link</a></Button>}
-                </CardContent>
-                <CardFooter className="flex justify-end gap-2 mt-auto">
-                  <Button variant="ghost" size="icon" onClick={() => handleEdit(item)}><Edit className="h-4 w-4" /></Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader><AlertDialogTitle>Sei sicuro?</AlertDialogTitle><AlertDialogDescription>Questa azione non può essere annullata. L'oggetto sarà cancellato permanentemente.</AlertDialogDescription></AlertDialogHeader>
-                      <AlertDialogFooter><AlertDialogCancel>Annulla</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(item.id)}>Sì, cancella</AlertDialogAction></AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
-        </div>}
-        </div>
-      )}
+          {(mineGroup.toBuy.length > 0 || mineGroup.bought.length > 0) && (
+            <div>
+              <SectionTitle>La mia wishlist</SectionTitle>
+              {mineGroup.toBuy.length > 0 && (
+                <div className="mb-6">
+                  <SubSectionLabel>Da comprare</SubSectionLabel>
+                  <ItemGrid
+                    items={mineGroup.toBuy}
+                    isMine={true}
+                    myUid={me}
+                    onToggleStatus={handleToggleStatus}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onReserve={handleReserve}
+                    onUnreserve={handleUnreserve}
+                  />
+                </div>
+              )}
+              {mineGroup.bought.length > 0 && (
+                <div>
+                  <SubSectionLabel>Comprati</SubSectionLabel>
+                  <ItemGrid
+                    items={mineGroup.bought}
+                    isMine={true}
+                    myUid={me}
+                    onToggleStatus={handleToggleStatus}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onReserve={handleReserve}
+                    onUnreserve={handleUnreserve}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
