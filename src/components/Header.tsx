@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
-import { CalendarDays, Gift, LogOut, Menu, Sparkles } from "lucide-react";
+import { CalendarDays, Gift, HeartHandshake, LogOut, Menu } from "lucide-react";
 
 import { auth } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
@@ -71,7 +71,7 @@ export default function Header() {
     <header className="sticky top-0 z-40 w-full border-b bg-card">
       <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
         <Link href="/calendar" className="flex items-center gap-2">
-          <Sparkles className="h-6 w-6 text-primary" aria-hidden="true" />
+          <HeartHandshake className="h-6 w-6 text-primary" aria-hidden="true" />
           <span className="font-headline text-lg font-bold">DuoSync</span>
         </Link>
 

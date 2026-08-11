@@ -19,7 +19,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -48,19 +47,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import {
   addMonths,
-  eachDayOfInterval,
-  endOfMonth,
-  endOfWeek,
+  addWeeks,
   format,
   isSameDay,
-  isSameMonth,
-  startOfMonth,
-  startOfWeek,
 } from "date-fns";
 import { it } from "date-fns/locale";
 import {
@@ -88,6 +82,15 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import {
+  capitalize,
+  gridDays,
+  groupEventsByDay,
+  isDayInCurrentMonth,
+  sortEvents,
+  visibleRange,
+} from "@/lib/calendar-utils";
+import type { CalendarView } from "@/lib/calendar-utils";
 
 function defaultColorForUser() {
   const email = auth.currentUser?.email || "";
@@ -96,6 +99,8 @@ function defaultColorForUser() {
   if (email.toLowerCase().includes("emma")) return "#F472B6"; // rosa
   return "#60A5FA"; // fallback blu
 }
+
+const EVENT_COLORS = ["#A78BFA", "#60A5FA", "#34D399", "#F59E0B", "#F472B6"];
 
 const eventSchema = z.object({
   title: z.string().min(1, "Il titolo è obbligatorio."),
@@ -120,7 +125,6 @@ function EventForm({
 }) {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-  // Auth context not needed inside EventForm currently; using Firebase auth directly for createdBy
   const form = useForm<EventFormValues>({
     resolver: zodResolver(eventSchema),
     defaultValues: {
@@ -134,13 +138,15 @@ function EventForm({
     },
   });
 
+  const isAllDay = useWatch({ control: form.control, name: "allDay" });
+
   const onSubmit = async (data: EventFormValues) => {
     setIsLoading(true);
     try {
       const eventData = {
         ...data,
         date: Timestamp.fromDate(data.date),
-        createdBy: auth.currentUser?.uid || "",
+        createdBy: event?.createdBy || auth.currentUser?.uid || "",
       };
       if (event) {
         await updateDoc(doc(db, "calendar", event.id), eventData);
@@ -172,7 +178,7 @@ function EventForm({
             <FormItem>
               <FormLabel>Titolo</FormLabel>
               <FormControl>
-                <Input placeholder="Es. Cena romantica" {...field} />
+                <Input placeholder="Es. Cena romantica" autoFocus {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -226,8 +232,20 @@ function EventForm({
               <FormItem>
                 <FormLabel>Tipo evento</FormLabel>
                 <div className="flex gap-2">
-                  <Button type="button" variant={field.value ? "default" : "outline"} onClick={() => field.onChange(true)}>Tutto il giorno</Button>
-                  <Button type="button" variant={!field.value ? "default" : "outline"} onClick={() => field.onChange(false)}>Con orario</Button>
+                  <Button
+                    type="button"
+                    variant={field.value ? "default" : "outline"}
+                    onClick={() => field.onChange(true)}
+                  >
+                    Tutto il giorno
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={!field.value ? "default" : "outline"}
+                    onClick={() => field.onChange(false)}
+                  >
+                    Con orario
+                  </Button>
                 </div>
               </FormItem>
             )}
@@ -237,17 +255,30 @@ function EventForm({
             name="color"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="flex items-center gap-2">Colore <Palette className="h-4 w-4" /></FormLabel>
+                <FormLabel className="flex items-center gap-2">
+                  Colore <Palette className="h-4 w-4" />
+                </FormLabel>
                 <div className="flex gap-2">
-                  {["#A78BFA","#60A5FA","#34D399","#F59E0B","#F472B6"].map(c => (
-                    <button key={c} type="button" aria-label={`Scegli colore ${c}`} onClick={() => field.onChange(c)} className={cn("h-8 w-8 rounded-full border", field.value === c && "ring-2 ring-offset-2 ring-primary")} style={{backgroundColor: c}} />
+                  {EVENT_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      aria-label={`Scegli colore ${c}`}
+                      onClick={() => field.onChange(c)}
+                      className={cn(
+                        "h-8 w-8 rounded-full border transition-transform hover:scale-110",
+                        field.value === c &&
+                          "ring-2 ring-offset-2 ring-primary"
+                      )}
+                      style={{ backgroundColor: c }}
+                    />
                   ))}
                 </div>
               </FormItem>
             )}
           />
         </div>
-        {!form.watch("allDay") && (
+        {!isAllDay && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField
               control={form.control}
@@ -309,27 +340,142 @@ function EventForm({
   );
 }
 
+function ViewToggle({
+  view,
+  onChange,
+}: {
+  view: CalendarView;
+  onChange: (view: CalendarView) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Vista calendario"
+      className="inline-flex rounded-md border bg-muted/50 p-0.5"
+    >
+      {(["month", "week"] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          role="tab"
+          aria-selected={view === v}
+          onClick={() => onChange(v)}
+          className={cn(
+            "rounded px-3 py-1.5 text-sm font-medium transition-colors",
+            view === v
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {v === "month" ? "Mese" : "Settimana"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function DayCell({
+  day,
+  anchor,
+  dayEvents,
+  onOpen,
+  onQuickAdd,
+}: {
+  day: Date;
+  anchor: Date;
+  dayEvents: CalendarEvent[];
+  onOpen: (day: Date) => void;
+  onQuickAdd: (day: Date) => void;
+}) {
+  const inMonth = isDayInCurrentMonth(day, anchor);
+  const isToday = isSameDay(day, new Date());
+  const bg = isToday
+    ? "bg-primary/10"
+    : inMonth
+      ? "bg-card"
+      : "bg-muted/40";
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(day)}
+      aria-label={
+        dayEvents.length > 0
+          ? `${format(day, "EEEE d MMMM", { locale: it })}, ${dayEvents.length} eventi`
+          : `Apri ${format(day, "EEEE d MMMM", { locale: it })}`
+      }
+      className={cn(
+        "group relative min-h-24 p-2 text-left transition-colors hover:bg-primary/5 focus:outline-none focus-visible:ring-2 sm:min-h-28",
+        isToday && "ring-1 ring-inset ring-primary/40",
+        bg
+      )}
+    >
+      <div className="flex items-center justify-between text-xs">
+        <span
+          className={cn(
+            "font-medium",
+            !inMonth && "text-muted-foreground"
+          )}
+        >
+          {format(day, "d", { locale: it })}
+        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onQuickAdd(day);
+          }}
+          aria-label={`Aggiungi evento il ${format(day, "d MMMM", { locale: it })}`}
+          className="rounded-full p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-primary/10 hover:text-primary focus-visible:opacity-100 group-hover:opacity-100 max-sm:opacity-100"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="mt-1 space-y-1">
+        {dayEvents.slice(0, 3).map((e) => (
+          <div
+            key={e.id}
+            className="truncate rounded px-1 py-0.5 text-xs text-card"
+            style={{ backgroundColor: e.color || "#A78BFA" }}
+          >
+            {!e.allDay && e.startTime && (
+              <span className="mr-1 font-medium">{e.startTime}</span>
+            )}
+            {e.title}
+          </div>
+        ))}
+        {dayEvents.length > 3 && (
+          <div className="text-[10px] text-muted-foreground">
+            +{dayEvents.length - 3} altri
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
 export default function CalendarPage() {
   const [mounted, setMounted] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | undefined>(undefined);
-  const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+  const [anchor, setAnchor] = useState<Date>(new Date());
+  const [view, setView] = useState<CalendarView>("month");
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const { toast } = useToast();
   const { user, loading: isAuthLoading } = useAuth();
 
   // Avoid hydration mismatch by rendering after mount
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration guard
     setMounted(true);
   }, []);
 
-  // fetch events of the visible month (after auth is ready)
+  // fetch events of the visible range (after auth is ready)
   useEffect(() => {
     if (isAuthLoading || !user) return;
-    const start = startOfMonth(currentMonth);
-    const end = endOfMonth(currentMonth);
+    const { start, end } = visibleRange(view, anchor);
     const qRef = query(
       collection(db, "calendar"),
       where("date", ">=", Timestamp.fromDate(start)),
@@ -339,18 +485,23 @@ export default function CalendarPage() {
     const unsubscribe = onSnapshot(
       qRef,
       (snapshot) => {
-        const eventsData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as CalendarEvent));
-        setEvents(eventsData);
+        setEvents(
+          snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as CalendarEvent)
+        );
         setLoading(false);
       },
       (error) => {
         console.error("Error fetching events:", error);
         setLoading(false);
-        toast({ variant: "destructive", title: "Errore di caricamento", description: "Impossibile caricare gli eventi del calendario." });
+        toast({
+          variant: "destructive",
+          title: "Errore di caricamento",
+          description: "Impossibile caricare gli eventi del calendario.",
+        });
       }
     );
     return () => unsubscribe();
-  }, [currentMonth, toast, isAuthLoading, user]);
+  }, [view, anchor, toast, isAuthLoading, user]);
 
   const handleEdit = (event: CalendarEvent) => {
     setEditingEvent(event);
@@ -379,27 +530,19 @@ export default function CalendarPage() {
     }
   };
 
-  // compute calendar grid days (must be declared before any return to keep hooks order stable)
-  const days = useMemo(() => {
-    const start = startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 1 });
-    const end = endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 1 });
-    return eachDayOfInterval({ start, end });
-  }, [currentMonth]);
+  const days = useMemo(() => gridDays(view, anchor), [view, anchor]);
 
-  const eventsByDay = useMemo(() => {
-    const map: Record<string, CalendarEvent[]> = {};
-    events.forEach((e) => {
-      const key = format(e.date.toDate(), "yyyy-MM-dd");
-      map[key] = map[key] || [];
-      map[key].push(e);
-    });
-    return map;
-  }, [events]);
+  const eventsByDay = useMemo(() => groupEventsByDay(events), [events]);
 
   if (!mounted || loading || isAuthLoading || !user) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div>
+        <div className="mb-4 h-8 w-48 animate-pulse rounded bg-muted/60" />
+        <div className="grid grid-cols-7 gap-px rounded-md border bg-border">
+          {Array.from({ length: view === "week" ? 7 : 35 }).map((_, i) => (
+            <div key={i} className="min-h-24 animate-pulse bg-muted/20 sm:min-h-28" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -408,23 +551,69 @@ export default function CalendarPage() {
     setSelectedDate(d);
   };
 
-  const monthLabel = format(currentMonth, "MMMM yyyy", { locale: it });
+  const navigate = (dir: -1 | 1) => {
+    setAnchor(view === "month" ? addMonths(anchor, dir) : addWeeks(anchor, dir));
+  };
+
+  const goToday = () => {
+    setAnchor(new Date());
+  };
+
+  const anchorLabel =
+    view === "month"
+      ? capitalize(format(anchor, "MMMM yyyy", { locale: it }))
+      : `${format(days[0], "d MMM", { locale: it })} — ${format(
+          days[days.length - 1],
+          "d MMM yyyy",
+          { locale: it }
+        )}`;
+
+  const selectedKey = selectedDate
+    ? format(selectedDate, "yyyy-MM-dd")
+    : undefined;
+  const selectedEvents = selectedKey
+    ? sortEvents(eventsByDay[selectedKey] || [])
+    : [];
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-headline tracking-tight">Calendario Condiviso</h1>
-          <p className="text-muted-foreground">I vostri impegni e momenti speciali, insieme.</p>
+          <h1 className="font-headline text-2xl font-bold tracking-tight">
+            Calendario Condiviso
+          </h1>
+          <p className="text-muted-foreground">
+            I vostri impegni e momenti speciali, insieme.
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => setCurrentMonth((d) => addMonths(d, -1))} aria-label="Mese precedente">
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-          <div className="min-w-[150px] text-center font-medium">{monthLabel}</div>
-          <Button variant="outline" size="icon" onClick={() => setCurrentMonth((d) => addMonths(d, 1))} aria-label="Mese successivo">
-            <ChevronRight className="h-5 w-5" />
-          </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ViewToggle view={view} onChange={setView} />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10"
+              onClick={() => navigate(-1)}
+              aria-label="Periodo precedente"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+            <div className="min-w-[130px] text-center text-sm font-medium sm:min-w-[160px]">
+              {anchorLabel}
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10"
+              onClick={() => navigate(1)}
+              aria-label="Periodo successivo"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </Button>
+            <Button variant="outline" onClick={goToday}>
+              Oggi
+            </Button>
+          </div>
           <Dialog
             open={isFormOpen}
             onOpenChange={(isOpen) => {
@@ -433,15 +622,21 @@ export default function CalendarPage() {
             }}
           >
             <DialogTrigger asChild>
-              <Button className="ml-2">
+              <Button>
                 <Plus className="mr-2 h-4 w-4" /> Aggiungi evento
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>{editingEvent ? "Modifica Evento" : "Nuovo Evento"}</DialogTitle>
+                <DialogTitle>
+                  {editingEvent ? "Modifica Evento" : "Nuovo Evento"}
+                </DialogTitle>
               </DialogHeader>
-              <EventForm event={editingEvent} initialDate={draftDate} onClose={() => setIsFormOpen(false)} />
+              <EventForm
+                event={editingEvent}
+                initialDate={draftDate}
+                onClose={() => setIsFormOpen(false)}
+              />
             </DialogContent>
           </Dialog>
         </div>
@@ -449,88 +644,124 @@ export default function CalendarPage() {
 
       {/* Weekday headers */}
       <div className="grid grid-cols-7 text-center text-xs font-medium text-muted-foreground">
-        {["Lun","Mar","Mer","Gio","Ven","Sab","Dom"].map((d) => (
-          <div key={d} className="py-2">{d}</div>
+        {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((d) => (
+          <div key={d} className="py-2">
+            {d}
+          </div>
         ))}
       </div>
 
-      {/* Month grid */}
-      <div className="grid grid-cols-7 gap-px rounded-md border bg-border">
+      {/* Grid */}
+      <div className="grid grid-cols-7 gap-px rounded-lg border bg-border shadow-sm">
         {days.map((d) => {
           const key = format(d, "yyyy-MM-dd");
-          const inMonth = isSameMonth(d, currentMonth);
-          const isToday = isSameDay(d, new Date());
-          const dayEvents = eventsByDay[key] || [];
-          const bg = isToday ? "bg-primary/10" : inMonth ? "bg-card" : "bg-muted/40";
           return (
-            <button
+            <DayCell
               key={key}
-              type="button"
-              onClick={() => openDay(d)}
-              className={cn("min-h-24 p-2 text-left transition-colors focus:outline-none focus-visible:ring-2", bg)}
-            >
-              <div className="flex items-center justify-between text-xs">
-                <span className={cn("font-medium", !inMonth && "text-muted-foreground")}>{format(d, "d", { locale: it })}</span>
-              </div>
-              <div className="mt-1 space-y-1">
-                {dayEvents.slice(0,3).map((e) => (
-                  <div key={e.id} className="truncate rounded px-1 py-0.5 text-xs text-card" style={{backgroundColor: e.color || "#A78BFA"}}>
-                    {e.title}
-                  </div>
-                ))}
-                {dayEvents.length > 3 && (
-                  <div className="text-[10px] text-muted-foreground">+{dayEvents.length-3} altri</div>
-                )}
-              </div>
-            </button>
+              day={d}
+              anchor={anchor}
+              dayEvents={eventsByDay[key] || []}
+              onOpen={openDay}
+              onQuickAdd={handleAddNew}
+            />
           );
         })}
       </div>
+
+      {view === "month" && events.length === 0 && (
+        <p className="text-center text-sm text-muted-foreground">
+          Nessun evento questo mese. Clicca su un giorno o su{" "}
+          <span className="inline-flex items-center gap-1 align-middle">
+            <Plus className="h-3.5 w-3.5" /> Aggiungi evento
+          </span>{" "}
+          per crearne uno.
+        </p>
+      )}
 
       {/* Day details modal */}
       <Dialog open={!!selectedDate} onOpenChange={(o) => !o && setSelectedDate(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {selectedDate ? format(selectedDate, "eeee d MMMM yyyy", { locale: it }) : ""}
+              {selectedDate
+                ? capitalize(
+                    format(selectedDate, "eeee d MMMM yyyy", { locale: it })
+                  )
+                : ""}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            {(selectedDate && eventsByDay[format(selectedDate, "yyyy-MM-dd")])?.map((event) => (
+            {selectedEvents.map((event) => (
               <Card key={event.id}>
                 <CardHeader className="flex-row items-center justify-between gap-2">
                   <div>
                     <CardTitle className="flex items-center gap-2">
-                      <span className="inline-block h-3 w-3 rounded-full" style={{backgroundColor: event.color || "#A78BFA"}} />
+                      <span
+                        className="inline-block h-3 w-3 rounded-full"
+                        style={{ backgroundColor: event.color || "#A78BFA" }}
+                      />
                       {event.title}
                     </CardTitle>
                     <CardDescription>
-                      {event.allDay ? "Tutto il giorno" : `Dalle ${event.startTime} alle ${event.endTime}`}
+                      {event.allDay
+                        ? "Tutto il giorno"
+                        : `Dalle ${event.startTime} alle ${event.endTime}`}
                     </CardDescription>
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(event)} aria-label="Modifica">
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-11 w-11 sm:h-9 sm:w-9"
+                      onClick={() => handleEdit(event)}
+                      aria-label={`Modifica "${event.title}"`}
+                    >
                       <Edit className="h-4 w-4" />
                     </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" aria-label="Elimina"><Trash2 className="h-4 w-4" /></Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-11 w-11 text-destructive hover:text-destructive sm:h-9 sm:w-9"
+                          aria-label={`Elimina "${event.title}"`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
-                        <AlertDialogHeader><AlertDialogTitle>Sei sicuro?</AlertDialogTitle><AlertDialogDescription>Questa azione non può essere annullata.</AlertDialogDescription></AlertDialogHeader>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Questa azione non può essere annullata.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Annulla</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(event.id)}>Sì, cancella</AlertDialogAction>
+                          <AlertDialogAction
+                            onClick={() => handleDelete(event.id)}
+                          >
+                            Sì, cancella
+                          </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
                   </div>
                 </CardHeader>
-                {event.description && <CardContent><p className="text-sm text-muted-foreground whitespace-pre-wrap">{event.description}</p></CardContent>}
+                {event.description && (
+                  <CardContent>
+                    <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+                      {event.description}
+                    </p>
+                  </CardContent>
+                )}
               </Card>
             ))}
             <div className="pt-2">
-              <Button onClick={() => handleAddNew(selectedDate || undefined)}><Plus className="mr-2 h-4 w-4"/>Aggiungi evento per questo giorno</Button>
+              <Button onClick={() => handleAddNew(selectedDate || undefined)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Aggiungi evento per questo giorno
+              </Button>
             </div>
           </div>
         </DialogContent>

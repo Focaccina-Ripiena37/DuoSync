@@ -1,7 +1,15 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
+import {
+  initializeApp,
+  getApps,
+  getApp,
+  type FirebaseApp,
+} from "firebase/app";
+import { getAuth, type Auth } from "firebase/auth";
+import { getFirestore, type Firestore } from "firebase/firestore";
+import {
+  initializeAppCheck,
+  ReCaptchaV3Provider,
+} from "firebase/app-check";
 
 // Read Firebase config from env vars to avoid committing secrets
 // Ensure these NEXT_PUBLIC_* values are defined in your .env.local file
@@ -14,15 +22,18 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
 };
 
-// Initialize Firebase only on the client to avoid CI/build failures when env vars are not present
-let app = getApps().length ? getApp() : undefined;
+// Initialize Firebase only on the client to avoid CI/build failures
+// when env vars are not present.
+let app: FirebaseApp | undefined = getApps().length ? getApp() : undefined;
 if (typeof window !== "undefined" && !app) {
   app = initializeApp(firebaseConfig);
 }
 
-// Export auth/db only when app exists (client). On server/build they are undefined but never used.
-export const auth = app ? getAuth(app) : (undefined as any);
-export const db = app ? getFirestore(app) : (undefined as any);
+// On server/build they are undefined but never used (client-only app).
+export const auth: Auth = app ? getAuth(app) : (undefined as unknown as Auth);
+export const db: Firestore = app
+  ? getFirestore(app)
+  : (undefined as unknown as Firestore);
 
 // Initialize App Check (client-only). Uses reCAPTCHA v3 site key.
 // Ensure NEXT_PUBLIC_FIREBASE_RECAPTCHA_V3_SITE_KEY is set in .env.local
@@ -34,8 +45,7 @@ if (typeof window !== "undefined" && app) {
       ),
       isTokenAutoRefreshEnabled: true,
     });
-  } catch (e) {
+  } catch {
     // avoid duplicate init errors on HMR
-    // console.debug("App Check already initialized or unavailable", e);
   }
 }

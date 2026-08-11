@@ -12,7 +12,7 @@ export default function BottomNav() {
     { href: "/wishlist", label: "Wishlist", icon: Gift },
   ];
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/75 md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-card/75 md:hidden">
       <ul className="mx-auto flex max-w-xl items-stretch justify-around p-2">
         {links.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname === `${href}/`;

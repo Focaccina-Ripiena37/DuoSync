@@ -1,0 +1,17 @@
+"use client";
+
+import { useEffect } from "react";
+
+export default function ServiceWorkerRegister() {
+  useEffect(() => {
+    if (
+      "serviceWorker" in navigator &&
+      process.env.NODE_ENV === "production"
+    ) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {
+        // SW non disponibile: l'app funziona comunque senza.
+      });
+    }
+  }, []);
+  return null;
+}
