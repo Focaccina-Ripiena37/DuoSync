@@ -8,7 +8,7 @@ import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import {
   initializeAppCheck,
-  ReCaptchaV3Provider,
+  ReCaptchaEnterpriseProvider,
 } from "firebase/app-check";
 
 // Read Firebase config from env vars to avoid committing secrets
@@ -35,12 +35,12 @@ export const db: Firestore = app
   ? getFirestore(app)
   : (undefined as unknown as Firestore);
 
-// Initialize App Check (client-only). Uses reCAPTCHA v3 site key.
+// Initialize App Check (client-only). Uses the reCAPTCHA Enterprise site key.
 // Ensure NEXT_PUBLIC_FIREBASE_RECAPTCHA_V3_SITE_KEY is set in .env.local
 if (typeof window !== "undefined" && app) {
   try {
     initializeAppCheck(app, {
-      provider: new ReCaptchaV3Provider(
+      provider: new ReCaptchaEnterpriseProvider(
         process.env.NEXT_PUBLIC_FIREBASE_RECAPTCHA_V3_SITE_KEY || ""
       ),
       isTokenAutoRefreshEnabled: true,

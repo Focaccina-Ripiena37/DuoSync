@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "deploy": "npm run build:static && firebase deploy",
+    "deploy": "npm run build:static && npm run deploy:rules && firebase deploy --only hosting",
     "deploy:rules": "node scripts/deploy-rules.mjs"
   },
   "dependencies": {

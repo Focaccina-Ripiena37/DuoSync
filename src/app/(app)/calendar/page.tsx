@@ -626,7 +626,7 @@ export default function CalendarPage() {
                 <Plus className="mr-2 h-4 w-4" /> Aggiungi evento
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent aria-describedby={undefined}>
               <DialogHeader>
                 <DialogTitle>
                   {editingEvent ? "Modifica Evento" : "Nuovo Evento"}
@@ -680,7 +680,7 @@ export default function CalendarPage() {
 
       {/* Day details modal */}
       <Dialog open={!!selectedDate} onOpenChange={(o) => !o && setSelectedDate(null)}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>
               {selectedDate

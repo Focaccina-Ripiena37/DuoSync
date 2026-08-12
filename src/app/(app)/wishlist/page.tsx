@@ -369,7 +369,7 @@ export default function WishlistPage() {
               <Plus className="mr-2 h-4 w-4" /> Aggiungi Oggetto
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>
                 {editingItem ? "Modifica Oggetto" : "Nuovo Oggetto"}

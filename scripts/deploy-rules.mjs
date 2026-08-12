@@ -40,11 +40,17 @@ try {
   writeFileSync(rulesPath, injected);
   console.log("firestore.rules aggiornato con le email reali (solo locale)");
 
-  const result = spawnSync("firebase", ["deploy", "--only", "firestore"], {
+  const result = spawnSync("firebase deploy --only firestore", {
     stdio: "inherit",
     cwd: root,
+    shell: true,
   });
-  process.exitCode = result.status ?? 1;
+  if (result.error) {
+    console.error(`Errore nell'avvio di firebase: ${result.error.message}`);
+    process.exitCode = 1;
+  } else {
+    process.exitCode = result.status ?? 1;
+  }
 } finally {
   writeFileSync(rulesPath, template);
   console.log("firestore.rules ripristinato ai placeholder (niente email nel repo)");
