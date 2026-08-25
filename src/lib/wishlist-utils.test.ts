@@ -5,6 +5,7 @@ import {
   groupByStatus,
   isReserved,
   reservedByMe,
+  sortByCreatedAt,
   splitByOwner,
 } from "@/lib/wishlist-utils";
 
@@ -60,5 +61,19 @@ describe("isReserved / reservedByMe", () => {
     expect(isReserved(other)).toBe(true);
     expect(reservedByMe(other, "uid-1")).toBe(false);
     expect(reservedByMe(mine, "uid-1")).toBe(true);
+  });
+});
+describe("sortByCreatedAt", () => {
+  const at = (ms: number) =>
+    ({ toMillis: () => ms }) as unknown as WishlistItem["createdAt"];
+
+  it("ordina dal piu recente e non perde gli item senza createdAt", () => {
+    const legacy = item({ id: "legacy", createdAt: undefined });
+    const old = item({ id: "old", createdAt: at(1000) });
+    const recent = item({ id: "recent", createdAt: at(2000) });
+
+    const sorted = sortByCreatedAt([old, legacy, recent]);
+
+    expect(sorted.map((i) => i.id)).toEqual(["recent", "old", "legacy"]);
   });
 });

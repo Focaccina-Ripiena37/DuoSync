@@ -9,8 +9,6 @@ import {
   updateDoc,
   deleteDoc,
   doc,
-  query,
-  orderBy,
   Timestamp,
   deleteField,
 } from "firebase/firestore";
@@ -44,7 +42,12 @@ import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { useAuth } from "@/hooks/useAuth";
 import { WishlistCard } from "@/components/WishlistCard";
-import { displayName, groupByStatus, splitByOwner } from "@/lib/wishlist-utils";
+import {
+  displayName,
+  groupByStatus,
+  sortByCreatedAt,
+  splitByOwner,
+} from "@/lib/wishlist-utils";
 
 const itemSchema = z.object({
   name: z.string().min(1, "Il nome è obbligatorio."),
@@ -213,12 +216,16 @@ export default function WishlistPage() {
 
   useEffect(() => {
     if (isAuthLoading || !user) return;
-    const q = query(collection(db, "wishlist"), orderBy("createdAt", "desc"));
+    // No orderBy(): Firestore silently drops documents missing the sorted
+    // field, which once hid every item created before `createdAt` existed.
+    // Two users, a handful of items - sorting client-side is safe.
     const unsubscribe = onSnapshot(
-      q,
+      collection(db, "wishlist"),
       (snapshot) => {
         setItems(
-          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as WishlistItem)
+          sortByCreatedAt(
+            snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as WishlistItem)
+          )
         );
         setLoading(false);
       },
