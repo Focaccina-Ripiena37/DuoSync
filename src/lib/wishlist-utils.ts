@@ -35,3 +35,10 @@ export function isReserved(item: WishlistItem): boolean {
 export function reservedByMe(item: WishlistItem, myUid: string): boolean {
   return Boolean(item.reservedBy && item.reservedBy === myUid);
 }
+// Newest first. Items without createdAt (added before the field existed) sort
+// last instead of disappearing, which is what a Firestore orderBy would do.
+export function sortByCreatedAt(items: WishlistItem[]): WishlistItem[] {
+  return [...items].sort(
+    (a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0)
+  );
+}

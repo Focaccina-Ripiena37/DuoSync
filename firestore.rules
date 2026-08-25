@@ -64,8 +64,21 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && isAllowedEmail();
     }
 
+    // Only the person who added the item may rename it, edit the description
+    // or the link, or delete it.
+    function isItemOwner() {
+      return resource.data.ownerUid == request.auth.uid;
+    }
+
+    // What the partner is allowed to touch on someone else's item:
+    // mark it as bought and reserve it. Nothing else.
+    function touchesOnlySharedFields() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['status', 'reservedBy', 'reservedByName', 'reservedByEmail']);
+    }
+
     // Wishlist: ownerUid/ownerEmail are assigned on create and immutable;
-    // the partner may toggle status and reserve items.
+    // the partner may toggle status and reserve items, but not edit them.
     match /wishlist/{itemId} {
       allow read: if isAuthenticated() && isAllowedEmail();
       allow create: if isAuthenticated() && isAllowedEmail()
@@ -74,8 +87,8 @@ service cloud.firestore {
         && request.resource.data.ownerEmail == request.auth.token.email;
       allow update: if isAuthenticated() && isAllowedEmail()
         && isValidWishlistItem(request.resource.data, resource.data)
-        && request.resource.data.ownerUid == resource.data.ownerUid;
-      allow delete: if isAuthenticated() && isAllowedEmail();
+        && (isItemOwner() || touchesOnlySharedFields());
+      allow delete: if isAuthenticated() && isAllowedEmail() && isItemOwner();
     }
   }
 }

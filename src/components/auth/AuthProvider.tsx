@@ -35,6 +35,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return () => unsubscribe();
   }, []);
 
+  // Palette chiara alternativa per un solo utente. Si confronta l'uid (opaco)
+  // e non l'email, cosi' nessun indirizzo finisce nel bundle pubblicato.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (user?.uid && user.uid === process.env.NEXT_PUBLIC_DUOSYNC_PINK_UID) {
+      root.dataset.palette = "rosa";
+    } else {
+      delete root.dataset.palette;
+    }
+  }, [user]);
+
   useEffect(() => {
     if (loading) return;
 
