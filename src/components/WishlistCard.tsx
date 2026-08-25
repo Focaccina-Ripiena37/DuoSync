@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Edit, ExternalLink, Heart, Trash2, X } from "lucide-react";
 import type { WishlistItem } from "@/types";
 import { cn } from "@/lib/utils";
-import { displayName, reservedByMe } from "@/lib/wishlist-utils";
+import { displayName, isReserved, reservedByMe } from "@/lib/wishlist-utils";
 
 function ReservedBadge({ label }: { label: string }) {
   return (
@@ -132,31 +132,31 @@ export function WishlistCard({
             </Button>
           )
         ) : null}
-        <div className="flex gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-11 w-11 sm:h-9 sm:w-9"
-            onClick={() => onEdit(item)}
-            aria-label={`Modifica "${item.name}"`}
-          >
-            <Edit className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-11 w-11 text-destructive hover:text-destructive sm:h-9 sm:w-9"
-            onClick={() => onDelete(item.id)}
-            aria-label={`Elimina "${item.name}"`}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        {/* Solo chi ha aggiunto l'oggetto puo' modificarlo o eliminarlo:
+            l'altro puo' spuntarlo come comprato e prenotarlo. */}
+        {isMine && (
+          <div className="ml-auto flex gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 sm:h-9 sm:w-9"
+              onClick={() => onEdit(item)}
+              aria-label={`Modifica "${item.name}"`}
+            >
+              <Edit className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 text-destructive hover:text-destructive sm:h-9 sm:w-9"
+              onClick={() => onDelete(item.id)}
+              aria-label={`Elimina "${item.name}"`}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </CardFooter>
     </Card>
   );
-}
-
-function isReserved(item: WishlistItem): boolean {
-  return Boolean(item.reservedBy);
 }
