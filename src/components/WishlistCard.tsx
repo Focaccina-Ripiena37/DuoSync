@@ -7,7 +7,16 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Edit, ExternalLink, Heart, Trash2, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Edit,
+  ExternalLink,
+  Heart,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
 import type { WishlistItem } from "@/types";
 import { cn } from "@/lib/utils";
 import { displayName, isReserved, reservedByMe } from "@/lib/wishlist-utils";
@@ -29,6 +38,11 @@ type WishlistCardProps = {
   onDelete: (id: string) => void;
   onReserve: (item: WishlistItem) => void;
   onUnreserve: (item: WishlistItem) => void;
+  onMove: (item: WishlistItem, offset: -1 | 1) => void;
+  onTogglePriority: (item: WishlistItem) => void;
+  isFirst: boolean;
+  isLast: boolean;
+  isPriority: boolean;
 };
 
 export function WishlistCard({
@@ -40,6 +54,11 @@ export function WishlistCard({
   onDelete,
   onReserve,
   onUnreserve,
+  onMove,
+  onTogglePriority,
+  isFirst,
+  isLast,
+  isPriority,
 }: WishlistCardProps) {
   const bought = item.status === "bought";
   const reservedByOther = isReserved(item) && !reservedByMe(item, myUid);
@@ -54,13 +73,36 @@ export function WishlistCard({
     >
       <CardHeader>
         <CardTitle className="flex items-start justify-between gap-2">
-          <span
-            className={cn(
-              "break-words",
-              bought && "line-through text-muted-foreground"
-            )}
-          >
-            {item.name}
+          <span className="flex min-w-0 items-start gap-2">
+            {isMine ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="-ml-2 -mt-2 h-11 w-11 shrink-0 text-amber-500 sm:h-9 sm:w-9"
+                onClick={() => onTogglePriority(item)}
+                aria-label={
+                  isPriority
+                    ? `Rimuovi la priorità da "${item.name}"`
+                    : `Dai priorità a "${item.name}"`
+                }
+                aria-pressed={isPriority}
+              >
+                <Star className={cn("h-5 w-5", isPriority && "fill-current")} />
+              </Button>
+            ) : isPriority ? (
+              <Star
+                className="h-5 w-5 shrink-0 fill-amber-400 text-amber-500"
+                aria-label="Priorità alta"
+              />
+            ) : null}
+            <span
+              className={cn(
+                "break-words",
+                bought && "line-through text-muted-foreground"
+              )}
+            >
+              {item.name}
+            </span>
           </span>
           <Checkbox
             checked={bought}
@@ -136,6 +178,26 @@ export function WishlistCard({
             l'altro puo' spuntarlo come comprato e prenotarlo. */}
         {isMine && (
           <div className="ml-auto flex gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 sm:h-9 sm:w-9"
+              onClick={() => onMove(item, -1)}
+              disabled={isFirst}
+              aria-label={`Sposta "${item.name}" prima`}
+            >
+              <ArrowUp className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 sm:h-9 sm:w-9"
+              onClick={() => onMove(item, 1)}
+              disabled={isLast}
+              aria-label={`Sposta "${item.name}" dopo`}
+            >
+              <ArrowDown className="h-4 w-4" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"

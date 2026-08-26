@@ -4,8 +4,9 @@ import {
   displayName,
   groupByStatus,
   isReserved,
+  moveWishlistItem,
   reservedByMe,
-  sortByCreatedAt,
+  sortWishlistItems,
   splitByOwner,
 } from "@/lib/wishlist-utils";
 
@@ -63,7 +64,7 @@ describe("isReserved / reservedByMe", () => {
     expect(reservedByMe(mine, "uid-1")).toBe(true);
   });
 });
-describe("sortByCreatedAt", () => {
+describe("wishlist order", () => {
   const at = (ms: number) =>
     ({ toMillis: () => ms }) as unknown as WishlistItem["createdAt"];
 
@@ -72,8 +73,23 @@ describe("sortByCreatedAt", () => {
     const old = item({ id: "old", createdAt: at(1000) });
     const recent = item({ id: "recent", createdAt: at(2000) });
 
-    const sorted = sortByCreatedAt([old, legacy, recent]);
+    const sorted = sortWishlistItems([old, legacy, recent]);
 
     expect(sorted.map((i) => i.id)).toEqual(["recent", "old", "legacy"]);
+  });
+
+  it("sposta una card e conserva il nuovo ordine", () => {
+    const first = item({ id: "first", order: 3 });
+    const second = item({ id: "second", order: 2 });
+    const third = item({ id: "third", order: 1 });
+
+    const moved = moveWishlistItem([first, second, third], "second", -1);
+
+    expect(moved.map((i) => i.id)).toEqual(["second", "first", "third"]);
+    expect(sortWishlistItems(moved).map((i) => i.id)).toEqual([
+      "second",
+      "first",
+      "third",
+    ]);
   });
 });

@@ -45,6 +45,7 @@ service cloud.firestore {
         && data.createdAt == original.createdAt
         && (!('description' in data) || data.description is string)
         && (!('url' in data) || data.url is string)
+        && (!('order' in data) || data.order is number)
         && (!('reservedBy' in data) || (data.reservedBy is string && data.reservedBy.size() > 0))
         && (!('reservedByName' in data) || data.reservedByName is string)
         && (!('reservedByEmail' in data) || data.reservedByEmail is string);
@@ -89,6 +90,18 @@ service cloud.firestore {
         && isValidWishlistItem(request.resource.data, resource.data)
         && (isItemOwner() || touchesOnlySharedFields());
       allow delete: if isAuthenticated() && isAllowedEmail() && isItemOwner();
+    }
+
+    // One document per user means one active priority at most.
+    match /wishlistPriorities/{userId} {
+      allow read: if isAuthenticated() && isAllowedEmail();
+      allow create, update: if isAuthenticated() && isAllowedEmail()
+        && userId == request.auth.uid
+        && request.resource.data.keys().hasOnly(['itemId'])
+        && request.resource.data.itemId is string
+        && get(/databases/$(database)/documents/wishlist/$(request.resource.data.itemId)).data.ownerUid == request.auth.uid;
+      allow delete: if isAuthenticated() && isAllowedEmail()
+        && userId == request.auth.uid;
     }
   }
 }

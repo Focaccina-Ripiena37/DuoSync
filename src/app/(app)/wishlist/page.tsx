@@ -11,6 +11,8 @@ import {
   doc,
   Timestamp,
   deleteField,
+  setDoc,
+  writeBatch,
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -45,7 +47,8 @@ import { WishlistCard } from "@/components/WishlistCard";
 import {
   displayName,
   groupByStatus,
-  sortByCreatedAt,
+  moveWishlistItem,
+  sortWishlistItems,
   splitByOwner,
 } from "@/lib/wishlist-utils";
 
@@ -177,6 +180,9 @@ function ItemGrid({
   onDelete,
   onReserve,
   onUnreserve,
+  onMove,
+  onTogglePriority,
+  priorityItemId,
 }: {
   items: WishlistItem[];
   isMine: boolean;
@@ -186,10 +192,13 @@ function ItemGrid({
   onDelete: (id: string) => void;
   onReserve: (item: WishlistItem) => void;
   onUnreserve: (item: WishlistItem) => void;
+  onMove: (items: WishlistItem[], item: WishlistItem, offset: -1 | 1) => void;
+  onTogglePriority: (item: WishlistItem) => void;
+  priorityItemId?: string;
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((item) => (
+      {items.map((item, index) => (
         <WishlistCard
           key={item.id}
           item={item}
@@ -200,6 +209,11 @@ function ItemGrid({
           onDelete={onDelete}
           onReserve={onReserve}
           onUnreserve={onUnreserve}
+          onMove={(movedItem, offset) => onMove(items, movedItem, offset)}
+          onTogglePriority={onTogglePriority}
+          isFirst={index === 0}
+          isLast={index === items.length - 1}
+          isPriority={priorityItemId === item.id}
         />
       ))}
     </div>
@@ -211,6 +225,7 @@ export default function WishlistPage() {
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<WishlistItem | undefined>(undefined);
+  const [priorities, setPriorities] = useState<Record<string, string>>({});
   const { toast } = useToast();
   const { user, loading: isAuthLoading } = useAuth();
 
@@ -223,7 +238,7 @@ export default function WishlistPage() {
       collection(db, "wishlist"),
       (snapshot) => {
         setItems(
-          sortByCreatedAt(
+          sortWishlistItems(
             snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as WishlistItem)
           )
         );
@@ -242,6 +257,17 @@ export default function WishlistPage() {
     return () => unsubscribe();
   }, [toast, isAuthLoading, user]);
 
+  useEffect(() => {
+    if (isAuthLoading || !user) return;
+    return onSnapshot(collection(db, "wishlistPriorities"), (snapshot) => {
+      setPriorities(
+        Object.fromEntries(
+          snapshot.docs.map((priority) => [priority.id, priority.data().itemId as string])
+        )
+      );
+    });
+  }, [isAuthLoading, user]);
+
   const me = user?.uid || "";
 
   const handleEdit = (item: WishlistItem) => {
@@ -256,7 +282,14 @@ export default function WishlistPage() {
 
   const handleDelete = async (id: string) => {
     try {
-      await deleteDoc(doc(db, "wishlist", id));
+      if (priorities[me] === id) {
+        const batch = writeBatch(db);
+        batch.delete(doc(db, "wishlist", id));
+        batch.delete(doc(db, "wishlistPriorities", me));
+        await batch.commit();
+      } else {
+        await deleteDoc(doc(db, "wishlist", id));
+      }
       toast({ title: "Oggetto cancellato." });
     } catch (error) {
       console.error("Error deleting item:", error);
@@ -264,6 +297,77 @@ export default function WishlistPage() {
         variant: "destructive",
         title: "Oh no! Qualcosa è andato storto.",
         description: "Impossibile cancellare l'oggetto.",
+      });
+    }
+  };
+
+  const handleMove = async (
+    visibleItems: WishlistItem[],
+    item: WishlistItem,
+    offset: -1 | 1
+  ) => {
+    const moved = moveWishlistItem(visibleItems, item.id, offset);
+    const previousOrderById = new Map(
+      visibleItems.map((entry) => [entry.id, entry.order])
+    );
+    const orderById = new Map(moved.map((entry) => [entry.id, entry.order]));
+    setItems((current) =>
+      sortWishlistItems(
+        current.map((entry) =>
+          orderById.has(entry.id) ? { ...entry, order: orderById.get(entry.id) } : entry
+        )
+      )
+    );
+    const batch = writeBatch(db);
+    moved.forEach((entry) =>
+      batch.update(doc(db, "wishlist", entry.id), { order: entry.order })
+    );
+    try {
+      await batch.commit();
+    } catch (error) {
+      console.error("Error reordering items:", error);
+      setItems((current) =>
+        sortWishlistItems(
+          current.map((entry) =>
+            previousOrderById.has(entry.id)
+              ? { ...entry, order: previousOrderById.get(entry.id) }
+              : entry
+          )
+        )
+      );
+      toast({
+        variant: "destructive",
+        title: "Ordine non salvato",
+        description: "Riprova a spostare l'oggetto.",
+      });
+    }
+  };
+
+  const handleTogglePriority = async (item: WishlistItem) => {
+    const previous = priorities[me];
+    const next = previous === item.id ? undefined : item.id;
+    setPriorities((current) => {
+      const updated = { ...current };
+      if (next) updated[me] = next;
+      else delete updated[me];
+      return updated;
+    });
+    try {
+      const priorityRef = doc(db, "wishlistPriorities", me);
+      if (next) await setDoc(priorityRef, { itemId: next });
+      else await deleteDoc(priorityRef);
+    } catch (error) {
+      console.error("Error updating priority:", error);
+      setPriorities((current) => {
+        const updated = { ...current };
+        if (previous) updated[me] = previous;
+        else delete updated[me];
+        return updated;
+      });
+      toast({
+        variant: "destructive",
+        title: "Priorità non salvata",
+        description: "Riprova a selezionare la stellina.",
       });
     }
   };
@@ -352,6 +456,8 @@ export default function WishlistPage() {
   const theirToBuy = theirs.filter((i) => !i.reservedBy);
   const theirGroups = groupByStatus(theirToBuy);
   const mineGroup = groupByStatus(mine);
+  const theirPriorityItemId =
+    priorities[theirs.find((item) => item.ownerUid)?.ownerUid || ""];
 
   return (
     <div className="space-y-6">
@@ -414,6 +520,9 @@ export default function WishlistPage() {
                     onDelete={handleDelete}
                     onReserve={handleReserve}
                     onUnreserve={handleUnreserve}
+                    onMove={handleMove}
+                    onTogglePriority={handleTogglePriority}
+                    priorityItemId={theirPriorityItemId}
                   />
                 </div>
               )}
@@ -429,6 +538,9 @@ export default function WishlistPage() {
                     onDelete={handleDelete}
                     onReserve={handleReserve}
                     onUnreserve={handleUnreserve}
+                    onMove={handleMove}
+                    onTogglePriority={handleTogglePriority}
+                    priorityItemId={theirPriorityItemId}
                   />
                 </div>
               )}
@@ -444,6 +556,9 @@ export default function WishlistPage() {
                     onDelete={handleDelete}
                     onReserve={handleReserve}
                     onUnreserve={handleUnreserve}
+                    onMove={handleMove}
+                    onTogglePriority={handleTogglePriority}
+                    priorityItemId={theirPriorityItemId}
                   />
                 </div>
               )}
@@ -465,6 +580,9 @@ export default function WishlistPage() {
                     onDelete={handleDelete}
                     onReserve={handleReserve}
                     onUnreserve={handleUnreserve}
+                    onMove={handleMove}
+                    onTogglePriority={handleTogglePriority}
+                    priorityItemId={priorities[me]}
                   />
                 </div>
               )}
@@ -480,6 +598,9 @@ export default function WishlistPage() {
                     onDelete={handleDelete}
                     onReserve={handleReserve}
                     onUnreserve={handleUnreserve}
+                    onMove={handleMove}
+                    onTogglePriority={handleTogglePriority}
+                    priorityItemId={priorities[me]}
                   />
                 </div>
               )}

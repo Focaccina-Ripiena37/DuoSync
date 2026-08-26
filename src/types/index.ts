@@ -21,6 +21,7 @@ export type WishlistItem = {
   ownerUid?: string;
   ownerEmail?: string;
   createdAt?: Timestamp;
+  order?: number;
   reservedBy?: string;
   reservedByName?: string;
   reservedByEmail?: string;
